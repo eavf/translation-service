@@ -8,15 +8,15 @@ Usage:
 
 Examples:
   ./upload-to-synology.sh
-  ./upload-to-synology.sh vovo 192.168.0.202
-  ./upload-to-synology.sh vovo 192.168.0.202 /volume1/docker/translation-service
-  ./upload-to-synology.sh vovo 192.168.0.202 /volume1/docker/translation-service --deploy
+  ./upload-to-synology.sh vovo [NASIP]
+  ./upload-to-synology.sh vovo [NASIP] /volume1/docker/translation-service
+  ./upload-to-synology.sh vovo [NASIP] /volume1/docker/translation-service --deploy
 
 Defaults:
   NAS_USER=vovo
-  NAS_HOST=192.168.0.202
+  NAS_HOST=[NASIP]
   REMOTE_DIR=/volume1/docker/translation-service
-  SSH_PORT=22222
+  SSH_PORT=[NASPORT]
 
 Options:
   --deploy   After upload, run docker compose up -d --build on the NAS.
@@ -30,10 +30,10 @@ fi
 
 # Set defaults
 NAS_USER="vovo"
-NAS_HOST="192.168.0.202"
+NAS_HOST="[NASIP]"
 REMOTE_DIR="/volume1/docker/translation-service"
 DEPLOY=""
-SSH_PORT="22222"
+SSH_PORT="[NASPORT]"
 
 # Parse arguments - separate flags from positional args
 pos_args=()
