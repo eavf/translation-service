@@ -1,0 +1,40 @@
+# version is required by Docker Compose v1 (used in some Synology DSM 7.1/7.2
+# builds of Container Manager). It is a no-op under Compose v2 but harmless.
+version: "3.8"
+
+# Single service supporting all six translation directions.
+# Models are loaded lazily — only the pairs you actually use consume RAM
+# (~400 MB per loaded model). All model caches share one volume under ./models/.
+#
+# Supported pairs and their ports (all on 8088):
+#   SK ↔ FR, SK ↔ EN, EN ↔ FR
+#
+# Route by source_lang + target_lang in the request body, e.g.:
+#   {"text": "...", "source_lang": "sk", "target_lang": "fr"}
+
+services:
+
+  translator:
+    image: local-translation-service:latest
+    build: .
+    container_name: translator
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./models:/models
+    environment:
+      MAX_CHARS_PER_REQUEST: "10000"
+      LOG_TEXT: "false"
+      ALLOWED_ORIGINS: "*"
+      HF_HOME: "/models/huggingface"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3

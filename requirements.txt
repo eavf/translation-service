@@ -1,0 +1,11 @@
+# torch is intentionally NOT listed here.
+# It is installed separately in the Dockerfile using the CPU-only wheel index:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# This prevents the ~2 GB CUDA wheels from ever being pulled.
+
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+transformers>=4.40.0
+sentencepiece>=0.2.0
+sacremoses>=0.1.1
+pydantic-settings>=2.2.0

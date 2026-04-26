@@ -1,0 +1,17 @@
+# Exclude the model cache from the Docker build context.
+# After the first run, ./models/ holds ~300 MB of weights. Without this file
+# those get sent to the Docker daemon on every `docker compose up --build`,
+# making rebuilds slow and temporarily doubling disk usage on the NAS.
+models/
+
+# Python cache — never needed in the image
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Local env overrides
+.env
+
+# Editor / OS artefacts
+.DS_Store
+*.swp

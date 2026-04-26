@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.pyo
+
+# local environment overrides — never commit real credentials
+.env
+
+# downloaded model weights — large binary files, not source code
+models/
+
+# Python packaging artefacts
+*.egg-info/
+dist/
+build/
+
+# macOS metadata
+.DS_Store
