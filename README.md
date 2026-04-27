@@ -4,24 +4,23 @@ A self-hosted REST API for offline text translation, built with FastAPI and
 Hugging Face Transformers. Designed to run on a Synology NAS (or any
 x86_64 Linux host) via Docker Compose — CPU only, no GPU required.
 
-Supports **eight translation directions** between Slovak, French, English, and Arabic —
-all in a single container, with models loaded on demand.
+Supports translation between **Slovak, French, English, and Arabic** in a single
+container, with two interchangeable backends:
+
+- **OPUS-MT** (default) — 8 directions, one lightweight model per pair (~300 MB each)
+- **NLLB** (optional) — 12 directions including SK↔AR and EN↔AR, one multilingual model (~2.4 GB)
 
 ---
 
 ## What it does
 
 - Exposes a simple HTTP API for translating text, plus a browser UI at `/ui`.
-- Routes by `source_lang` + `target_lang` in each request — one service
-  handles all directions (SK↔FR, SK↔EN, EN↔FR, AR↔FR).
-- Models are loaded **lazily**: only the pairs you actually use are kept in
-  memory (~400 MB each). Unused directions cost nothing.
-- Splits long texts into paragraph- and sentence-aware chunks so requests
-  larger than the model's token limit still work correctly.
-- Caches translated chunks (LRU, 256 entries per model) — repeated strings
-  such as UI labels are never sent to the model twice.
-- Keeps model weights on a persistent host volume so models are not
-  re-downloaded when the container is recreated.
+- Routes by `source_lang` + `target_lang` — one container handles all language pairs.
+- **Two backends** selectable per request: OPUS-MT (fast, per-pair) or NLLB (quality, multilingual).
+- Models load **lazily**: only pairs you actually request are kept in memory. Unused directions cost nothing.
+- Splits long texts into paragraph- and sentence-aware chunks so requests larger than the model's token limit still work correctly.
+- Caches translated chunks (LRU, 256 entries per model) — repeated strings such as UI labels are never sent to the model twice.
+- Keeps model weights on a persistent host volume so models are not re-downloaded when the container is recreated.
 
 ---
 
@@ -41,7 +40,7 @@ translation-service/
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
-├── upload-to-synology.sh  # One-command rsync deploy script
+├── upload-to-synology.sh.example  # Deploy script template (copy → .sh, fill in your NAS details)
 ├── .env.example
 └── README.md
 ```
@@ -100,8 +99,24 @@ Expected response:
 }
 ```
 
-Supported pairs: `sk→fr`, `fr→sk`, `sk→en`, `en→sk`, `en→fr`, `fr→en`, `ar→fr`, `fr→ar`.
+The `model` field in the response always contains the exact HuggingFace model ID that processed
+the request — useful when `backend` is omitted and the caller wants to know which model was used:
+
+| Backend | Example `model` value |
+|---|---|
+| OPUS-MT | `Helsinki-NLP/opus-mt-sk-fr` |
+| NLLB | `facebook/nllb-200-distilled-600M` |
+
+Supported pairs (OPUS-MT default): `sk→fr`, `fr→sk`, `sk→en`, `en→sk`, `en→fr`, `fr→en`, `ar→fr`, `fr→ar`.
 Sending an unsupported pair returns HTTP 422.
+
+The optional `backend` field lets you choose per request — existing clients that omit it get the configured default:
+
+```json
+{"text": "...", "source_lang": "sk", "target_lang": "fr", "backend": "nllb"}
+```
+
+Valid values: `"nllb"` | `"opus-mt"` | omit (use server default).
 
 ### Browser UI
 
@@ -445,9 +460,10 @@ curl http://NAS_IP:8088/model-info
 Expected (after at least one translation request):
 ```json
 {
-  "supported_pairs": ["en→fr", "en→sk", "fr→en", "fr→sk", "sk→en", "sk→fr"],
+  "backend": "opus-mt",
+  "supported_pairs": ["ar→fr", "en→fr", "en→sk", "fr→ar", "fr→en", "fr→sk", "sk→en", "sk→fr"],
   "loaded_models": [
-    {"pair": "sk-fr", "model_id": "Helsinki-NLP/opus-mt-sk-fr", "device": "cpu"}
+    {"backend": "opus-mt", "pair": "sk-fr", "model_id": "Helsinki-NLP/opus-mt-sk-fr", "device": "cpu"}
   ]
 }
 ```
