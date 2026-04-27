@@ -35,7 +35,9 @@ translation-service/
 │   ├── translator.py    # Model loading, chunking, inference
 │   ├── settings.py      # Environment-variable configuration
 │   └── static/
-│       └── index.html   # Browser translation UI
+│       ├── index.html                  # Browser translation UI
+│       ├── translation_multilingual.png  # UI logo + favicon
+│       └── translation_local_docker.png  # API docs favicon
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
@@ -108,7 +110,8 @@ http://NAS_IP:8088/ui
 ```
 
 DeepL-style interface — select language pair, type text, translation appears
-automatically. Includes swap button, character counter, and copy button.
+automatically. Includes swap button, character counter, copy button, and
+backend selector (visible when NLLB is configured).
 Link to API docs is in the top-right corner.
 
 ### Other useful endpoints
@@ -156,6 +159,48 @@ Models are loaded on the first request for each pair and stay in memory.
 
 RAM usage is ~400 MB per loaded model. If you only use two or three
 directions, the others are never loaded and cost nothing.
+
+---
+
+## Model backends
+
+### Helsinki-NLP OPUS-MT (default)
+
+One model per language pair, loaded lazily. ~300 MB per model, ~400 MB RAM.
+No configuration needed — works out of the box.
+
+### Facebook NLLB (optional)
+
+Single multilingual model for all pairs. Higher quality, especially for
+less-common pairs (e.g. SK↔AR directly without pivot language).
+
+| Model | Size | RAM | Quality |
+|---|---|---|---|
+| `facebook/nllb-200-distilled-600M` | ~2.4 GB | ~2.4 GB | Good |
+| `facebook/nllb-200-distilled-1.3B` | ~5 GB | ~5 GB | Better |
+
+Enable in `docker-compose.yml`:
+```yaml
+TRANSLATION_MODEL: "facebook/nllb-200-distilled-600M"
+CHUNK_SIZE: "400"
+```
+
+**Note:** The model downloads on first request (~2.4 GB). If the automatic
+download stalls (known issue on some NAS internet connections), download
+`pytorch_model.bin` manually from HuggingFace and place it in the blob cache:
+
+```bash
+# Download from: https://huggingface.co/facebook/nllb-200-distilled-600M/resolve/main/pytorch_model.bin
+# Then copy to NAS:
+scp -P 22222 pytorch_model.bin vovo@NAS_IP:/volume1/docker/pytorch_model.bin
+ssh -p 22222 vovo@NAS_IP "sudo mv /volume1/docker/pytorch_model.bin \
+  /volume1/docker/translation-service/models/huggingface/hub/models--facebook--nllb-200-distilled-600M/blobs/<hash>"
+```
+
+The blob hash is the filename of the `.incomplete` file in the blobs directory.
+
+When NLLB is active, the UI shows a backend selector — switch between
+**NLLB (quality)** and **OPUS-MT (speed)** per request without restart.
 
 ---
 
