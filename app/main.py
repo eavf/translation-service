@@ -6,7 +6,9 @@ from typing import AsyncGenerator, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 from .settings import settings
@@ -37,6 +39,7 @@ app = FastAPI(
     title="Local Translation Service",
     version="2.0.0",
     lifespan=lifespan,
+    docs_url=None,
 )
 
 _origins = (
@@ -81,6 +84,18 @@ class TranslateResponse(BaseModel):
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
+
+
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+
+@app.get("/docs", include_in_schema=False)
+async def custom_docs() -> HTMLResponse:
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="Local Translation Service – API docs",
+        swagger_favicon_url="/static/translation_local_docker.png",
+    )
 
 
 @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)

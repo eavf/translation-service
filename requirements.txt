@@ -4,6 +4,7 @@
 # This prevents the ~2 GB CUDA wheels from ever being pulled.
 
 fastapi>=0.111.0
+aiofiles>=23.0.0
 uvicorn[standard]>=0.29.0
 transformers>=4.40.0
 sentencepiece>=0.2.0
