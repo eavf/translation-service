@@ -11,6 +11,7 @@ __pycache__/
 
 # Local env overrides
 .env
+upload-to-synology.sh
 
 # Editor / OS artefacts
 .DS_Store

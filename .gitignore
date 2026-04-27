@@ -4,6 +4,7 @@ __pycache__/
 
 # local environment overrides — never commit real credentials
 .env
+upload-to-synology.sh
 
 # downloaded model weights — large binary files, not source code
 models/

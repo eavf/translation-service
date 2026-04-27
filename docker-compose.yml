@@ -2,14 +2,14 @@
 # builds of Container Manager). It is a no-op under Compose v2 but harmless.
 version: "3.8"
 
-# Single service supporting all six translation directions.
-# Models are loaded lazily — only the pairs you actually use consume RAM
-# (~400 MB per loaded model). All model caches share one volume under ./models/.
+# Single service supporting all translation directions.
 #
-# Supported pairs and their ports (all on 8088):
-#   SK ↔ FR, SK ↔ EN, EN ↔ FR
+# Backend options (set TRANSLATION_MODEL):
+#   empty  → Helsinki-NLP OPUS-MT, one model per pair (~400 MB each, lazy loaded)
+#   facebook/nllb-200-distilled-600M  → single multilingual model (~2.4 GB RAM)
+#   facebook/nllb-200-distilled-1.3B  → higher quality, needs ~5 GB RAM
 #
-# Route by source_lang + target_lang in the request body, e.g.:
+# Route by source_lang + target_lang in the request body:
 #   {"text": "...", "source_lang": "sk", "target_lang": "fr"}
 
 services:
@@ -23,6 +23,14 @@ services:
     volumes:
       - ./models:/models
     environment:
+      # ── Model backend ──────────────────────────────────────────────────────
+      # Leave empty for OPUS-MT per-pair (default). Uncomment for NLLB:
+      TRANSLATION_MODEL: "facebook/nllb-200-distilled-600M"
+      FALLBACK_TRANSLATION_MODEL: ""
+      # ── Chunk size ─────────────────────────────────────────────────────────
+      # Use 400 or less when TRANSLATION_MODEL is set to an NLLB model.
+      CHUNK_SIZE: "400"
+      # ── Limits / logging ───────────────────────────────────────────────────
       MAX_CHARS_PER_REQUEST: "10000"
       LOG_TEXT: "false"
       ALLOWED_ORIGINS: "*"

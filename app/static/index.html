@@ -249,6 +249,7 @@
     <select id="src-lang"></select>
     <button class="swap-btn" id="swap" title="Vymeniť jazyky">⇄</button>
     <select id="tgt-lang"></select>
+    <select id="backend-sel" title="Model" style="display:none; margin-left:auto; min-width:0; font-size:0.82rem; color:var(--text-muted)"></select>
   </div>
 
   <div class="panels">
@@ -276,13 +277,6 @@
 </main>
 
 <script>
-  const PAIRS = {
-    sk: ['fr', 'en'],
-    fr: ['sk', 'en', 'ar'],
-    en: ['sk', 'fr'],
-    ar: ['fr'],
-  };
-
   const LANG_NAMES = {
     sk: 'Slovenčina',
     fr: 'Français',
@@ -290,21 +284,47 @@
     ar: 'العربية',
   };
 
+  // Populated from GET / on load — updates automatically when backend changes.
+  let PAIRS = {
+    sk: ['fr', 'en'],
+    fr: ['sk', 'en', 'ar'],
+    en: ['sk', 'fr'],
+    ar: ['fr'],
+  };
+
   const MAX_CHARS  = 10000;
   const WARN_CHARS = 9000;
   const DEBOUNCE   = 650;
 
-  const srcEl      = document.getElementById('src-lang');
-  const tgtEl      = document.getElementById('tgt-lang');
-  const sourceEl   = document.getElementById('source');
-  const targetEl   = document.getElementById('target');
-  const charEl     = document.getElementById('char-count');
-  const modelTagEl = document.getElementById('model-tag');
-  const loadingEl  = document.getElementById('loading');
-  const errorEl    = document.getElementById('error-bar');
-  const clearBtn   = document.getElementById('clear');
-  const swapBtn    = document.getElementById('swap');
-  const copyBtn    = document.getElementById('copy-btn');
+  const srcEl       = document.getElementById('src-lang');
+  const tgtEl       = document.getElementById('tgt-lang');
+  const backendEl   = document.getElementById('backend-sel');
+  const sourceEl    = document.getElementById('source');
+  const targetEl    = document.getElementById('target');
+  const charEl      = document.getElementById('char-count');
+  const modelTagEl  = document.getElementById('model-tag');
+  const loadingEl   = document.getElementById('loading');
+  const errorEl     = document.getElementById('error-bar');
+  const clearBtn    = document.getElementById('clear');
+  const swapBtn     = document.getElementById('swap');
+  const copyBtn     = document.getElementById('copy-btn');
+
+  const BACKEND_LABELS = { nllb: 'NLLB (kvalita)', 'opus-mt': 'OPUS-MT (rýchlosť)' };
+  let availableBackends = [];
+
+  function buildBackendSelector(backends, defaultBackend) {
+    availableBackends = backends;
+    backendEl.innerHTML = '';
+    if (backends.length < 2) { backendEl.style.display = 'none'; return; }
+    for (const b of backends) {
+      const opt = document.createElement('option');
+      opt.value = b;
+      opt.textContent = BACKEND_LABELS[b] || b;
+      if (b === defaultBackend) opt.selected = true;
+      backendEl.appendChild(opt);
+    }
+    backendEl.style.display = '';
+  }
 
   let debounceTimer = null;
   let activeCtrl    = null;
@@ -364,6 +384,7 @@
           text,
           source_lang: srcEl.value,
           target_lang: tgtEl.value,
+          ...(backendEl.style.display !== 'none' ? { backend: backendEl.value } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -392,6 +413,7 @@
 
   srcEl.addEventListener('change', () => { buildTgtOptions(); scheduleTranslate(); });
   tgtEl.addEventListener('change', scheduleTranslate);
+  backendEl.addEventListener('change', scheduleTranslate);
 
   sourceEl.addEventListener('input', () => { updateCharCount(); scheduleTranslate(); });
 
@@ -425,10 +447,34 @@
     });
   });
 
-  // Init
-  buildSrcOptions();
-  srcEl.value = 'sk';
-  buildTgtOptions('fr');
+  // Init — fetch config from API, then build UI
+  async function init() {
+    try {
+      const res = await fetch('/');
+      const data = await res.json();
+
+      // Rebuild language pair map
+      const pairs = data.supported_pairs || [];
+      const built = {};
+      for (const pair of pairs) {
+        const [src, tgt] = pair.split('→');
+        if (!built[src]) built[src] = [];
+        built[src].push(tgt);
+      }
+      if (Object.keys(built).length) PAIRS = built;
+
+      // Backend selector — show only when multiple backends are available
+      const backend = data.backend || 'opus-mt';
+      const backends = backend === 'nllb' ? ['nllb', 'opus-mt'] : ['opus-mt'];
+      buildBackendSelector(backends, backend);
+    } catch (_) { /* use static fallback */ }
+
+    buildSrcOptions();
+    srcEl.value = 'sk';
+    buildTgtOptions('fr');
+  }
+
+  init();
 </script>
 </body>
 </html>
