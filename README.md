@@ -136,15 +136,25 @@ All settings are environment variables. Edit `docker-compose.yml` or copy
 
 | Variable | Default | Description |
 |---|---|---|
+| `TRANSLATION_MODEL` | `` | Primary backend model ID (empty = OPUS-MT per-pair) |
+| `FALLBACK_TRANSLATION_MODEL` | `` | Fallback if primary fails (empty = auto-detect OPUS-MT) |
 | `MAX_CHARS_PER_REQUEST` | `10000` | Hard limit per single request |
-| `CHUNK_SIZE` | `450` | Max characters per internal translation chunk fed to the model |
+| `CHUNK_SIZE` | `450` | Max characters per internal chunk (use `400` with NLLB) |
 | `LOG_TEXT` | `false` | Set `true` to log translated text (debug only) |
 | `ALLOWED_ORIGINS` | `*` | CORS origins, comma-separated or `*` |
 
-### Supported language pairs
+---
 
-All six directions are served by the single container on port **8088**.
-Models are loaded on the first request for each pair and stay in memory.
+## Model backends
+
+Two backends are available. Switch by setting `TRANSLATION_MODEL` in `docker-compose.yml`.
+
+### Helsinki-NLP OPUS-MT (default)
+
+One model per language pair, loaded lazily on first request. ~300 MB per model, ~400 MB RAM.
+No configuration needed — works out of the box.
+
+All eight directions are served by the single container on port **8088**:
 
 | Direction | Model | HF downloads |
 |---|---|---|
@@ -157,47 +167,44 @@ Models are loaded on the first request for each pair and stay in memory.
 | AR → FR | `Helsinki-NLP/opus-mt-ar-fr` | 1.6 K |
 | FR → AR | `Helsinki-NLP/opus-mt-fr-ar` | 1.9 K |
 
-RAM usage is ~400 MB per loaded model. If you only use two or three
-directions, the others are never loaded and cost nothing.
-
----
-
-## Model backends
-
-### Helsinki-NLP OPUS-MT (default)
-
-One model per language pair, loaded lazily. ~300 MB per model, ~400 MB RAM.
-No configuration needed — works out of the box.
+RAM usage is ~400 MB per loaded model. Unused directions cost nothing.
 
 ### Facebook NLLB (optional)
 
-Single multilingual model for all pairs. Higher quality, especially for
-less-common pairs (e.g. SK↔AR directly without pivot language).
+Single multilingual model covering all pairs including SK↔AR and EN↔AR directly.
+Higher quality than OPUS-MT, especially for less-common pairs.
 
-| Model | Size | RAM | Quality |
+| Model | Disk | RAM | Quality |
 |---|---|---|---|
 | `facebook/nllb-200-distilled-600M` | ~2.4 GB | ~2.4 GB | Good |
 | `facebook/nllb-200-distilled-1.3B` | ~5 GB | ~5 GB | Better |
 
+Supported pairs with NLLB: all 12 combinations of SK / FR / EN / AR.
+
 Enable in `docker-compose.yml`:
+
 ```yaml
 TRANSLATION_MODEL: "facebook/nllb-200-distilled-600M"
 CHUNK_SIZE: "400"
 ```
 
-**Note:** The model downloads on first request (~2.4 GB). If the automatic
-download stalls (known issue on some NAS internet connections), download
-`pytorch_model.bin` manually from HuggingFace and place it in the blob cache:
+**Model download (~2.4 GB):** happens on the first request. If the automatic
+download stalls (known issue on slow NAS internet connections), download
+`pytorch_model.bin` manually:
 
 ```bash
-# Download from: https://huggingface.co/facebook/nllb-200-distilled-600M/resolve/main/pytorch_model.bin
-# Then copy to NAS:
-scp -P 22222 pytorch_model.bin vovo@NAS_IP:/volume1/docker/pytorch_model.bin
-ssh -p 22222 vovo@NAS_IP "sudo mv /volume1/docker/pytorch_model.bin \
-  /volume1/docker/translation-service/models/huggingface/hub/models--facebook--nllb-200-distilled-600M/blobs/<hash>"
-```
+# 1. Download from HuggingFace:
+#    https://huggingface.co/facebook/nllb-200-distilled-600M/resolve/main/pytorch_model.bin
 
-The blob hash is the filename of the `.incomplete` file in the blobs directory.
+# 2. Stop the container and copy the file to a writable location on the NAS:
+scp -P [SSH_PORT] pytorch_model.bin [NAS_USER]@[NAS_IP]:/volume1/docker/pytorch_model.bin
+
+# 3. Move it into the blob cache (the hash is the .incomplete filename in the blobs dir):
+ssh -p [SSH_PORT] [NAS_USER]@[NAS_IP] "sudo mv /volume1/docker/pytorch_model.bin \
+  /volume1/docker/translation-service/models/huggingface/hub/models--facebook--nllb-200-distilled-600M/blobs/<hash>"
+
+# 4. Start the container — it will find the file and load without re-downloading.
+```
 
 When NLLB is active, the UI shows a backend selector — switch between
 **NLLB (quality)** and **OPUS-MT (speed)** per request without restart.
@@ -235,7 +242,7 @@ The old per-pair port mapping (8088–8093) is replaced by a single port
 ### Step 1 — Copy the project to the NAS
 
 The easiest way is the included deploy script, which uses `rsync` over SSH
-(port 22222 — the default non-standard SSH port on Synology DSM):
+(Synology DSM typically uses port `22222` — check yours in DSM → Control Panel → Terminal & SNMP):
 
 ```bash
 # Upload only (inspect before starting)
@@ -247,12 +254,12 @@ The easiest way is the included deploy script, which uses `rsync` over SSH
 
 Default connection parameters (edit the top of the script if yours differ):
 
-| Parameter | Default |
-|---|---|
-| `NAS_USER` | `vovo` |
-| `NAS_HOST` | `192.168.0.202` |
-| `REMOTE_DIR` | `/volume1/docker/translation-service` |
-| `SSH_PORT` | `22222` |
+| Parameter | Default in script | Typical value |
+|---|---|---|
+| `NAS_USER` | `myuser` | your DSM username |
+| `NAS_HOST` | `192.168.1.100` | local IP of your NAS |
+| `REMOTE_DIR` | `/volume1/docker/translation-service` | path on the NAS |
+| `SSH_PORT` | `22` | Synology DSM often uses `22222` |
 
 You can also pass them as positional arguments:
 
@@ -300,7 +307,7 @@ request, not at startup. The health check turns green almost immediately.
 Follow the logs over SSH to see model downloads in real time:
 
 ```bash
-ssh -p 22222 NAS_USER@NAS_IP
+ssh -p [SSH_PORT] NAS_USER@NAS_IP
 docker compose -f /volume1/docker/translation-service/docker-compose.yml logs -f
 ```
 
@@ -598,7 +605,7 @@ If you connect from the **same network as the NAS** (LAN, local Wi-Fi, or
 VPN into the LAN) always use the **local IP**:
 
 ```bash
-curl http://192.168.0.202:8088/health   # works
+curl http://[NAS_IP]:8088/health   # works
 curl http://yourname.synology.me:8088/health  # fails on LAN
 ```
 
@@ -609,7 +616,7 @@ device inside the same LAN. The connection is simply dropped.
 
 | Where you connect from | Use |
 |---|---|
-| Same LAN / local Wi-Fi | `http://192.168.0.202:8088` |
+| Same LAN / local Wi-Fi | `http://[NAS_IP]:8088` |
 | Internet (remote access) | `https://yourname.synology.me` via reverse proxy (see below) |
 
 ### Remote access
@@ -640,7 +647,7 @@ alternative with a friendlier UI.
 | `422` with "Unsupported language pair" | Invalid `source_lang`/`target_lang` combination | Use one of: sk↔fr, sk↔en, en↔fr |
 | `422 Unprocessable Entity` | Text exceeds `MAX_CHARS_PER_REQUEST` | Split your request or raise the limit |
 | Model file missing after restart | Volume not mounted | Confirm `./models` exists and is writable |
-| `ssh: connect to host ... port 22` fails | NAS uses non-standard SSH port | Add `-p 22222` to SSH/SCP commands, or use `upload-to-synology.sh` |
+| `ssh: connect to host ... port 22` fails | NAS uses non-standard SSH port | Add `-p [SSH_PORT]` to SSH/SCP commands, or use `upload-to-synology.sh` |
 
 ---
 
